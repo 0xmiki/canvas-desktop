@@ -43,6 +43,11 @@ protocol.registerSchemesAsPrivileged([
   { scheme: ASSET_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
 ]);
 
+app.setName("Canvas");
+// Separate profile for tests and side-by-side instances. Must precede the
+// single-instance lock, which is scoped to the userData directory.
+if (process.env.CANVAS_USER_DATA) app.setPath("userData", path.resolve(process.env.CANVAS_USER_DATA));
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
@@ -50,9 +55,6 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 async function boot() {
-  app.setName("Canvas");
-  // Separate profile for tests and side-by-side instances.
-  if (process.env.CANVAS_USER_DATA) app.setPath("userData", path.resolve(process.env.CANVAS_USER_DATA));
   await app.whenReady();
 
   // Images and fonts referenced by local path: canvas-asset://file/<encoded absolute path>.
