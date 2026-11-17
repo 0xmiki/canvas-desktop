@@ -1,6 +1,23 @@
 # Canvas
 
-An AI-first design canvas. You tell your agent what you want; the agent designs it on the canvas over MCP while you watch. There are no drawing tools for humans (yet). You can pan, zoom and click things to point at them ("make *this* bigger").
+An AI-first design canvas. You tell your agent what you want; the agent designs it on the canvas over MCP while you watch. There are no drawing tools for humans (yet). You can navigate, organize designs into projects, and click things to point at them ("make *this* bigger").
+
+## Navigating
+
+| Mouse | Does |
+| --- | --- |
+| Scroll wheel | Zoom at the cursor (trackpad two-finger scroll pans; pinch zooms) |
+| Shift + wheel | Pan sideways |
+| Drag (left on canvas, middle, right, or Space + drag) | Pan |
+| Click / Shift + click | Select / add to selection (Esc clears, Enter / Shift+Enter go to child / parent) |
+| Double-click | Zoom to the screen under the cursor; again to zoom into the element |
+| Double-click empty canvas | Zoom to fit everything |
+
+The "Wheel" button in the status bar switches between auto, always-zoom and always-pan. The zoom controls there (− % + fit) and Ctrl+= / Ctrl+- / Ctrl+0 / Shift+1 / Shift+2 work too.
+
+## Projects
+
+A project is a folder of designs (`*.canvas.json`). It can be a standalone folder (new ones go in `~/Documents/Canvas`) or a `design/` folder inside a code repo, so the agent working on that repo keeps designs next to the code. The sidebar (Ctrl+\) switches projects and creates, opens, renames (double-click) and trashes designs. Files that appear in the folder from elsewhere show up live. Opening a file outside any project adds its folder as a project.
 
 ## Run
 
@@ -36,7 +53,8 @@ The status bar shows the endpoint; click it to copy that command. Set `CANVAS_MC
 | `list_icons` | Search the Lucide icon set |
 | `focus` | Select nodes and zoom the user's view to them |
 | `history` | Undo/redo/list |
-| `open_document` / `new_document` / `save_document` | Files (`*.canvas.json`) |
+| `list_projects` / `open_project` | Projects: folders of designs, optionally inside a code repo |
+| `open_document` / `new_document` / `save_document` | Designs: by name within the project, or by path |
 
 ## Document model
 
