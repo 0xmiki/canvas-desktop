@@ -1,0 +1,308 @@
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import { pathToFileURL } from "node:url";
+
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  dialog,
+  ipcMain,
+  Menu,
+  net,
+  protocol,
+  type MenuItemConstructorOptions,
+} from "electron";
+
+import {
+  COMMAND_CHANNEL,
+  READY_CHANNEL,
+  SELECT_CHANNEL,
+  STATE_CHANNEL,
+  VIEW_COMMAND_CHANNEL,
+  type AppState,
+  type McpStatus,
+  type UserCommand,
+  type ViewCommand,
+} from "../shared/ipc.ts";
+import { DOCUMENT_EXTENSION } from "../shared/schema.ts";
+import { DocumentStore } from "./documentStore.ts";
+import { iconExists, suggestIcons } from "./icons.ts";
+import { DEFAULT_MCP_PORT, startMcpServer } from "./mcp/server.ts";
+import type { CanvasHost, MeasureResult } from "./mcp/tools.ts";
+import { requestRenderer } from "./rendererRpc.ts";
+import { createEditorWindow, Stage } from "./windows.ts";
+
+const ASSET_SCHEME = "canvas-asset";
+const ASSET_EXTENSIONS = new Set([
+  ".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".svg", ".bmp", ".ico",
+  ".woff", ".woff2", ".ttf", ".otf",
+]);
+
+protocol.registerSchemesAsPrivileged([
+  { scheme: ASSET_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
+]);
+
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  void boot();
+}
+
+async function boot() {
+  app.setName("Canvas");
+  // Separate profile for tests and side-by-side instances.
+  if (process.env.CANVAS_USER_DATA) app.setPath("userData", path.resolve(process.env.CANVAS_USER_DATA));
+  await app.whenReady();
+
+  // Images and fonts referenced by local path: canvas-asset://file/<encoded absolute path>.
+  protocol.handle(ASSET_SCHEME, (request) => {
+    const url = new URL(request.url);
+    const filePath = decodeURIComponent(url.pathname.slice(1));
+    if (!path.isAbsolute(filePath) || !ASSET_EXTENSIONS.has(path.extname(filePath).toLowerCase())) {
+      return new Response("Not found", { status: 404 });
+    }
+    return net.fetch(pathToFileURL(filePath).toString());
+  });
+
+  const userData = app.getPath("userData");
+  const statePath = path.join(userData, "canvas-state.json");
+  const store = new DocumentStore(path.join(userData, `recovery${DOCUMENT_EXTENSION}`), {
+    iconExists,
+    suggestIcons,
+  });
+  const stage = new Stage();
+  const port = Number(process.env.CANVAS_MCP_PORT) || DEFAULT_MCP_PORT;
+  const mcp: McpStatus = { url: `http://127.0.0.1:${port}/mcp`, listening: false, error: null };
+
+  // Reopen the last document, or the untitled recovery copy.
+  const fileArg = process.argv.slice(1).find((arg) => arg.endsWith(".json") && !arg.startsWith("-"));
+  try {
+    const saved = JSON.parse(await fs.readFile(statePath, "utf8")) as { lastFile?: string | null };
+    const target = fileArg ?? saved.lastFile;
+    if (target) await store.open(target);
+    else await store.restoreRecovery();
+  } catch {
+    if (fileArg) await store.open(fileArg).catch(() => undefined);
+    else await store.restoreRecovery();
+  }
+
+  let editor: BrowserWindow | null = null;
+  let rendererReady = false;
+
+  const snapshot = (): AppState => ({
+    doc: store.doc,
+    version: store.version,
+    filePath: store.filePath,
+    docDir: store.filePath ? path.dirname(store.filePath) : null,
+    dirty: store.dirty,
+    selection: store.selection,
+    mcp,
+    activity: store.activity,
+  });
+
+  let broadcastQueued = false;
+  const broadcast = () => {
+    if (broadcastQueued) return;
+    broadcastQueued = true;
+    queueMicrotask(() => {
+      broadcastQueued = false;
+      if (!editor || editor.isDestroyed() || !rendererReady) return;
+      const state = snapshot();
+      editor.webContents.send(STATE_CHANNEL, state);
+      const name = store.filePath ? path.basename(store.filePath) : "Untitled";
+      editor.setTitle(`${name}${store.dirty ? " •" : ""} — Canvas`);
+    });
+  };
+
+  let lastFile = store.filePath;
+  store.on("change", () => {
+    broadcast();
+    if (store.filePath !== lastFile) {
+      lastFile = store.filePath;
+      void fs
+        .mkdir(userData, { recursive: true })
+        .then(() => fs.writeFile(statePath, JSON.stringify({ lastFile })));
+    }
+  });
+
+  const waitForEditor = async () => {
+    for (let i = 0; i < 100 && !rendererReady; i++) await new Promise((r) => setTimeout(r, 100));
+    if (!editor || editor.isDestroyed() || !rendererReady) throw new Error("The canvas window is not open");
+    return editor.webContents;
+  };
+
+  const host: CanvasHost = {
+    store,
+    stage,
+    validation: { iconExists, suggestIcons },
+    docDir: () => (store.filePath ? path.dirname(store.filePath) : null),
+    measure: async (ids) =>
+      requestRenderer<MeasureResult>(await waitForEditor(), {
+        type: "measure",
+        payload: { ids, minVersion: store.version },
+      }),
+    focus: async (ids) => {
+      await requestRenderer(await waitForEditor(), { type: "focus", payload: { ids } });
+    },
+    captureEditor: async () => {
+      const contents = await waitForEditor();
+      const image = await contents.capturePage();
+      const { width } = image.getSize();
+      return (width > 1568 ? image.resize({ width: 1568, quality: "best" }) : image).toPNG();
+    },
+  };
+
+  try {
+    const server = await startMcpServer(host, port, app.getVersion());
+    mcp.url = server.url;
+    mcp.listening = true;
+    app.on("will-quit", server.close);
+    console.log(`[canvas] MCP server listening on ${server.url}`);
+  } catch (error) {
+    mcp.error =
+      (error as NodeJS.ErrnoException).code === "EADDRINUSE"
+        ? `Port ${port} is in use. Set CANVAS_MCP_PORT to use another.`
+        : String(error);
+    console.error("[canvas] MCP server failed to start:", mcp.error);
+  }
+
+  ipcMain.on(READY_CHANNEL, (event) => {
+    if (event.sender !== editor?.webContents) return;
+    rendererReady = true;
+    broadcast();
+  });
+  ipcMain.on(SELECT_CHANNEL, (event, ids: unknown) => {
+    if (event.sender !== editor?.webContents || !Array.isArray(ids)) return;
+    store.setSelection(ids.filter((id): id is string => typeof id === "string"));
+  });
+  ipcMain.on(COMMAND_CHANNEL, (event, command: UserCommand) => {
+    if (event.sender !== editor?.webContents) return;
+    void runCommand(command);
+  });
+
+  const sendView = (command: ViewCommand) => editor?.webContents.send(VIEW_COMMAND_CHANNEL, command);
+
+  async function runCommand(command: UserCommand) {
+    try {
+      switch (command) {
+        case "undo":
+          store.undo();
+          break;
+        case "redo":
+          store.redo();
+          break;
+        case "new":
+          await store.newDocument();
+          break;
+        case "open": {
+          const result = await dialog.showOpenDialog(editor!, {
+            title: "Open design",
+            filters: [{ name: "Canvas designs", extensions: ["json"] }],
+            properties: ["openFile"],
+          });
+          if (!result.canceled && result.filePaths[0]) await store.open(result.filePaths[0]);
+          break;
+        }
+        case "save":
+          if (store.filePath) {
+            await store.save();
+            break;
+          }
+        // fall through: untitled documents need a path
+        case "save-as": {
+          const result = await dialog.showSaveDialog(editor!, {
+            title: "Save design",
+            defaultPath: store.filePath ?? path.join(app.getPath("documents"), `Untitled${DOCUMENT_EXTENSION}`),
+            filters: [{ name: "Canvas designs", extensions: ["json"] }],
+          });
+          if (!result.canceled && result.filePath) await store.save(result.filePath);
+          break;
+        }
+      }
+    } catch (error) {
+      dialog.showErrorBox("Canvas", error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  const isMac = process.platform === "darwin";
+  const menu: MenuItemConstructorOptions[] = [
+    ...(isMac ? [{ role: "appMenu" as const }] : []),
+    {
+      label: "File",
+      submenu: [
+        { label: "New", accelerator: "CmdOrCtrl+N", click: () => void runCommand("new") },
+        { label: "Open…", accelerator: "CmdOrCtrl+O", click: () => void runCommand("open") },
+        { label: "Save", accelerator: "CmdOrCtrl+S", click: () => void runCommand("save") },
+        { label: "Save As…", accelerator: "CmdOrCtrl+Shift+S", click: () => void runCommand("save-as") },
+        { type: "separator" },
+        {
+          label: "Copy MCP Setup Command",
+          click: () => clipboard.writeText(`claude mcp add --transport http canvas ${mcp.url}`),
+        },
+        { type: "separator" },
+        isMac ? { role: "close" } : { role: "quit" },
+      ],
+    },
+    {
+      label: "Edit",
+      submenu: [
+        { label: "Undo", accelerator: "CmdOrCtrl+Z", click: () => void runCommand("undo") },
+        { label: "Redo", accelerator: "CmdOrCtrl+Shift+Z", click: () => void runCommand("redo") },
+        { label: "Redo ", accelerator: "CmdOrCtrl+Y", visible: false, click: () => void runCommand("redo") },
+        { type: "separator" },
+        { label: "Deselect", accelerator: "Escape", click: () => store.setSelection([]) },
+      ],
+    },
+    {
+      label: "View",
+      submenu: [
+        { label: "Zoom In", accelerator: "CmdOrCtrl+=", click: () => sendView("zoom-in") },
+        { label: "Zoom Out", accelerator: "CmdOrCtrl+-", click: () => sendView("zoom-out") },
+        { label: "Actual Size", accelerator: "CmdOrCtrl+0", click: () => sendView("zoom-reset") },
+        { label: "Zoom to Fit", accelerator: "Shift+1", click: () => sendView("zoom-fit") },
+        { label: "Zoom to Selection", accelerator: "Shift+2", click: () => sendView("zoom-selection") },
+        { type: "separator" },
+        { role: "toggleDevTools" },
+        { role: "togglefullscreen" },
+      ],
+    },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(menu));
+
+  const openEditor = () => {
+    rendererReady = false;
+    editor = createEditorWindow();
+    editor.on("closed", () => {
+      editor = null;
+      rendererReady = false;
+      // The offscreen stage window would otherwise keep the app alive.
+      if (!isMac) app.quit();
+    });
+  };
+  openEditor();
+
+  app.on("second-instance", (_event, argv) => {
+    const file = argv.slice(1).find((arg) => arg.endsWith(".json") && !arg.startsWith("-"));
+    if (file) void store.open(file);
+    if (editor) {
+      if (editor.isMinimized()) editor.restore();
+      editor.focus();
+    }
+  });
+  app.on("activate", () => {
+    if (!editor) openEditor();
+  });
+  app.on("window-all-closed", () => {
+    if (!isMac) app.quit();
+  });
+
+  let quitting = false;
+  app.on("before-quit", (event) => {
+    if (quitting) return;
+    event.preventDefault();
+    quitting = true;
+    stage.destroy();
+    void store.flush().finally(() => app.quit());
+  });
+}
