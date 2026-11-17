@@ -1,5 +1,6 @@
 export const SERVER_INSTRUCTIONS = `Canvas is a design canvas you control. The user watches the canvas while you design.
 Start with get_state. Call get_guide once per session before your first edit: it is the full node schema.
+Designs live in projects (folders of .canvas.json files). When working in a code repo, open_project on a folder like <repo>/design so designs sit next to the code; new_document adds designs to the current project.
 Edit with batch (declarative ops) or execute (JavaScript for loops/grids). Every call is one undo step.
 Verify visually with screenshot after meaningful changes; fix what looks wrong before moving on.
 The user's selection (from get_state) is usually what "this" refers to.`;
@@ -91,8 +92,14 @@ canvas.find({ type, name, text }) or canvas.find(node => bool) → node copies
 canvas.variables → object                          canvas.setVariables({ name: value })
 console.log(...) output and the script's last expression are returned. All changes are one undo step.
 
+## Projects and designs
+A project is a folder of designs (\`*.canvas.json\`). list_projects shows known projects and the current
+project's designs; open_project opens (or creates) a folder; new_document { name } adds a design to it;
+open_document accepts a design name from the current project, a project-relative path, or an absolute path.
+Use one design per feature or flow (e.g. "Onboarding", "Settings"), with its screens as top-level frames.
+
 ## Workflow
-1. get_state → see the document, the user's selection, and existing screens.
+1. get_state → see the project, the open design, the user's selection, and existing screens.
 2. Build big structures in one batch (a whole screen as one nested create). Prefer auto layout
    (row/column) over absolute x/y inside screens so things stay aligned when content changes.
 3. screenshot the frame you changed. Look for overlaps, clipping, misalignment, low contrast.

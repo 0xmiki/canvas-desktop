@@ -159,6 +159,12 @@ export class DocumentStore extends EventEmitter<{ change: [] }> {
     return target;
   }
 
+  /** The open file was moved on disk (e.g. renamed); keep editing it at its new path. */
+  relocate(filePath: string) {
+    this.filePath = filePath;
+    this.emit("change");
+  }
+
   /** Wait for pending writes. Call before switching documents or quitting. */
   async flush() {
     if (this.saveTimer) {

@@ -11,6 +11,28 @@ export const READY_CHANNEL = "canvas:ready";
 export const SELECT_CHANNEL = "canvas:select";
 export const COMMAND_CHANNEL = "canvas:command";
 export const VIEW_COMMAND_CHANNEL = "canvas:view-command";
+export const PROJECT_CHANNEL = "canvas:project";
+
+export interface ProjectRef {
+  name: string;
+  /** Absolute folder path. */
+  path: string;
+}
+
+export interface DesignRef {
+  /** Path relative to the project, without the extension. */
+  name: string;
+  path: string;
+}
+
+/** Sidebar actions. Omitted paths open a folder picker. */
+export type ProjectAction =
+  | { type: "open-project"; path?: string }
+  | { type: "forget-project"; path: string }
+  | { type: "open-design"; path: string }
+  | { type: "new-design" }
+  | { type: "rename-design"; path: string; name: string }
+  | { type: "delete-design"; path: string };
 
 export interface McpStatus {
   url: string;
@@ -36,6 +58,9 @@ export interface AppState {
   selection: string[];
   mcp: McpStatus;
   activity: Activity | null;
+  project: ProjectRef | null;
+  projects: ProjectRef[];
+  designs: DesignRef[];
 }
 
 export interface Bounds {
@@ -73,7 +98,13 @@ export interface RenderResult {
 }
 
 export type UserCommand = "new" | "open" | "save" | "save-as" | "undo" | "redo";
-export type ViewCommand = "zoom-in" | "zoom-out" | "zoom-reset" | "zoom-fit" | "zoom-selection";
+export type ViewCommand =
+  | "zoom-in"
+  | "zoom-out"
+  | "zoom-reset"
+  | "zoom-fit"
+  | "zoom-selection"
+  | "toggle-sidebar";
 
 export interface CanvasBridge {
   /** "editor" for the main window, "stage" for the offscreen rasterizer. */
@@ -84,6 +115,7 @@ export interface CanvasBridge {
   ready(): void;
   select(ids: string[]): void;
   command(command: UserCommand): void;
+  project(action: ProjectAction): void;
 }
 
 declare global {

@@ -10,6 +10,7 @@ import type { Bounds } from "../../shared/ipc.ts";
 import type { DesignDocument, DesignNode } from "../../shared/schema.ts";
 import { expandInstance, locate, walk } from "../../shared/tree.ts";
 import type { DocumentStore } from "../documentStore.ts";
+import type { Workspace } from "../workspace.ts";
 import { searchIcons } from "../icons.ts";
 import { applyOperations, outline, type Operation, type ValidationContext } from "../operations.ts";
 import type { Stage } from "../windows.ts";
@@ -22,6 +23,7 @@ export interface MeasureResult {
 
 export interface CanvasHost {
   store: DocumentStore;
+  workspace: Workspace;
   stage: Stage;
   validation: ValidationContext;
   docDir(): string | null;
@@ -190,6 +192,14 @@ export function registerTools(server: McpServer, host: CanvasHost) {
         // The editor window may still be loading; bounds are best effort.
       }
       const lines: string[] = [];
+      const { project, designs } = host.workspace;
+      if (project) {
+        const others = designs.filter((design) => design.path !== store.filePath).map((design) => design.name);
+        lines.push(`Project: ${project.name} (${project.path})`);
+        if (others.length) lines.push(`Other designs in project: ${others.slice(0, 30).join(", ")}${others.length > 30 ? ", …" : ""}`);
+      } else {
+        lines.push("Project: none (open_project to work in a folder of designs)");
+      }
       lines.push(
         store.filePath
           ? `Document: ${store.filePath}${store.dirty ? " (saving…)" : " (saved)"}`
@@ -564,19 +574,74 @@ export function registerTools(server: McpServer, host: CanvasHost) {
     },
   );
 
+  const errorText = (error: unknown) => fail(error instanceof Error ? error.message : String(error));
+
+  server.registerTool(
+    "list_projects",
+    {
+      title: "List projects",
+      description:
+        "Known projects (folders of .canvas.json designs) and the designs in the current one. A project can be a standalone folder or a design folder inside a code repo.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true },
+    },
+    async () => {
+      const { workspace } = host;
+      const lines: string[] = [];
+      if (!workspace.projects.length) lines.push("No projects yet. Create one with open_project.");
+      for (const project of workspace.projects) {
+        const current = project.path === workspace.project?.path;
+        lines.push(`${current ? "* " : "- "}${project.name}  ${project.path}${current ? "  (current)" : ""}`);
+      }
+      if (workspace.project) {
+        lines.push("", `Designs in ${workspace.project.name}:`);
+        for (const design of workspace.designs) {
+          lines.push(`${design.path === store.filePath ? "* " : "- "}${design.name}`);
+        }
+        if (!workspace.designs.length) lines.push("- (none)");
+      }
+      return text(lines.join("\n"));
+    },
+  );
+
+  server.registerTool(
+    "open_project",
+    {
+      title: "Open project",
+      description:
+        "Open a project folder in the editor, creating the folder if needed, and open its most recently edited design (or a new one). For a code repo, a folder like <repo>/design works well.",
+      inputSchema: {
+        path: z.string().describe("Absolute folder path (~/ allowed)"),
+        name: z.string().optional().describe("Display name; defaults to the folder name"),
+      },
+    },
+    async ({ path: dir, name }) => {
+      try {
+        await host.workspace.openProject(dir, name);
+        const { project, designs } = host.workspace;
+        return text(
+          `Opened project ${project?.name} (${project?.path}) with ${designs.length} design${designs.length === 1 ? "" : "s"}. Editing ${store.filePath}.`,
+        );
+      } catch (error) {
+        return errorText(error);
+      }
+    },
+  );
+
   server.registerTool(
     "open_document",
     {
-      title: "Open document",
-      description: `Open a .canvas.json design file in the editor (creates it if it doesn't exist). The current document is saved first.`,
-      inputSchema: { path: z.string().describe("Absolute path to a .canvas.json file") },
+      title: "Open design",
+      description:
+        "Open a design: a name from the current project (e.g. 'Onboarding'), a path relative to the project, or an absolute .canvas.json path. Missing files are created. The current design is saved first.",
+      inputSchema: { path: z.string().describe("Design name or path") },
     },
-    async ({ path: filePath }) => {
+    async ({ path: reference }) => {
       try {
-        await store.open(filePath);
+        await host.workspace.openDesign(reference);
         return text(`Opened ${store.filePath} (${store.doc.children.length} top-level nodes)`);
       } catch (error) {
-        return fail(error instanceof Error ? error.message : String(error));
+        return errorText(error);
       }
     },
   );
@@ -584,13 +649,18 @@ export function registerTools(server: McpServer, host: CanvasHost) {
   server.registerTool(
     "new_document",
     {
-      title: "New document",
-      description: "Start a new empty untitled document. The current one is saved first.",
-      inputSchema: {},
+      title: "New design",
+      description:
+        "Create and open a new empty design in the current project (or an untitled document when no project is open). The current one is saved first.",
+      inputSchema: { name: z.string().optional().describe("Design name, e.g. 'Checkout flow'") },
     },
-    async () => {
-      await store.newDocument();
-      return text("New untitled document. Call save_document with a path to keep it.");
+    async ({ name }) => {
+      try {
+        const file = await host.workspace.newDesign(name);
+        return text(file ? `Created and opened ${file}` : "New untitled document. Call save_document with a path to keep it.");
+      } catch (error) {
+        return errorText(error);
+      }
     },
   );
 

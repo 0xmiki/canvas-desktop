@@ -54,7 +54,8 @@ export function createEditorWindow(): BrowserWindow {
     },
   });
   lockNavigation(window.webContents);
-  window.once("ready-to-show", () => window.show());
+  // CANVAS_HIDDEN keeps automated test runs off the user's screen.
+  if (!process.env.CANVAS_HIDDEN) window.once("ready-to-show", () => window.show());
   void load(window, "editor");
   return window;
 }

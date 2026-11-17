@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 
 import {
   COMMAND_CHANNEL,
+  PROJECT_CHANNEL,
   READY_CHANNEL,
   REQUEST_CHANNEL,
   RESPONSE_CHANNEL,
@@ -44,6 +45,7 @@ const bridge: CanvasBridge = {
   ready: () => ipcRenderer.send(READY_CHANNEL),
   select: (ids) => ipcRenderer.send(SELECT_CHANNEL, ids.filter((id) => typeof id === "string")),
   command: (command) => ipcRenderer.send(COMMAND_CHANNEL, command),
+  project: (action) => ipcRenderer.send(PROJECT_CHANNEL, action),
 };
 
 contextBridge.exposeInMainWorld("canvasBridge", bridge);

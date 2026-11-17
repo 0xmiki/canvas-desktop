@@ -1,4 +1,3 @@
-import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -11,22 +10,26 @@ import {
   Menu,
   net,
   protocol,
+  shell,
   type MenuItemConstructorOptions,
 } from "electron";
 
 import {
   COMMAND_CHANNEL,
+  PROJECT_CHANNEL,
   READY_CHANNEL,
   SELECT_CHANNEL,
   STATE_CHANNEL,
   VIEW_COMMAND_CHANNEL,
   type AppState,
   type McpStatus,
+  type ProjectAction,
   type UserCommand,
   type ViewCommand,
 } from "../shared/ipc.ts";
 import { DOCUMENT_EXTENSION } from "../shared/schema.ts";
 import { DocumentStore } from "./documentStore.ts";
+import { Workspace } from "./workspace.ts";
 import { iconExists, suggestIcons } from "./icons.ts";
 import { DEFAULT_MCP_PORT, startMcpServer } from "./mcp/server.ts";
 import type { CanvasHost, MeasureResult } from "./mcp/tools.ts";
@@ -47,6 +50,9 @@ app.setName("Canvas");
 // Separate profile for tests and side-by-side instances. Must precede the
 // single-instance lock, which is scoped to the userData directory.
 if (process.env.CANVAS_USER_DATA) app.setPath("userData", path.resolve(process.env.CANVAS_USER_DATA));
+
+// Test hook: drive the renderer over the Chrome DevTools Protocol.
+if (process.env.CANVAS_DEBUG_PORT) app.commandLine.appendSwitch("remote-debugging-port", process.env.CANVAS_DEBUG_PORT);
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -77,17 +83,16 @@ async function boot() {
   const port = Number(process.env.CANVAS_MCP_PORT) || DEFAULT_MCP_PORT;
   const mcp: McpStatus = { url: `http://127.0.0.1:${port}/mcp`, listening: false, error: null };
 
-  // Reopen the last document, or the untitled recovery copy.
+  const workspace = new Workspace(
+    store,
+    statePath,
+    path.join(app.getPath("documents"), "Canvas"),
+    (file) => shell.trashItem(file),
+  );
+
+  // Reopen the last document (and its project), or the untitled recovery copy.
   const fileArg = process.argv.slice(1).find((arg) => arg.endsWith(".json") && !arg.startsWith("-"));
-  try {
-    const saved = JSON.parse(await fs.readFile(statePath, "utf8")) as { lastFile?: string | null };
-    const target = fileArg ?? saved.lastFile;
-    if (target) await store.open(target);
-    else await store.restoreRecovery();
-  } catch {
-    if (fileArg) await store.open(fileArg).catch(() => undefined);
-    else await store.restoreRecovery();
-  }
+  await workspace.restore(fileArg);
 
   let editor: BrowserWindow | null = null;
   let rendererReady = false;
@@ -101,6 +106,9 @@ async function boot() {
     selection: store.selection,
     mcp,
     activity: store.activity,
+    project: workspace.project,
+    projects: workspace.projects,
+    designs: workspace.designs,
   });
 
   let broadcastQueued = false;
@@ -117,16 +125,8 @@ async function boot() {
     });
   };
 
-  let lastFile = store.filePath;
-  store.on("change", () => {
-    broadcast();
-    if (store.filePath !== lastFile) {
-      lastFile = store.filePath;
-      void fs
-        .mkdir(userData, { recursive: true })
-        .then(() => fs.writeFile(statePath, JSON.stringify({ lastFile })));
-    }
-  });
+  store.on("change", broadcast);
+  workspace.on("change", broadcast);
 
   const waitForEditor = async () => {
     for (let i = 0; i < 100 && !rendererReady; i++) await new Promise((r) => setTimeout(r, 100));
@@ -136,6 +136,7 @@ async function boot() {
 
   const host: CanvasHost = {
     store,
+    workspace,
     stage,
     validation: { iconExists, suggestIcons },
     docDir: () => (store.filePath ? path.dirname(store.filePath) : null),
@@ -183,7 +184,64 @@ async function boot() {
     void runCommand(command);
   });
 
+  ipcMain.on(PROJECT_CHANNEL, (event, action: ProjectAction) => {
+    if (event.sender !== editor?.webContents || typeof action?.type !== "string") return;
+    void runProjectAction(action);
+  });
+
   const sendView = (command: ViewCommand) => editor?.webContents.send(VIEW_COMMAND_CHANNEL, command);
+
+  async function pickProjectFolder(): Promise<string | null> {
+    const result = await dialog.showOpenDialog(editor!, {
+      title: "Choose or create a project folder",
+      buttonLabel: "Use as project",
+      defaultPath: workspace.projectsRoot,
+      properties: ["openDirectory", "createDirectory"],
+    });
+    return result.canceled ? null : (result.filePaths[0] ?? null);
+  }
+
+  const knownDesign = (file: unknown): file is string =>
+    typeof file === "string" && workspace.designs.some((design) => design.path === file);
+
+  async function runProjectAction(action: ProjectAction) {
+    try {
+      switch (action.type) {
+        case "open-project": {
+          const folder = action.path ?? (await pickProjectFolder());
+          if (folder) await workspace.openProject(folder);
+          break;
+        }
+        case "forget-project":
+          workspace.forgetProject(action.path);
+          break;
+        case "open-design":
+          if (knownDesign(action.path)) await store.open(action.path);
+          break;
+        case "new-design":
+          await workspace.newDesign();
+          break;
+        case "rename-design":
+          if (knownDesign(action.path) && typeof action.name === "string")
+            await workspace.renameDesign(action.path, action.name);
+          break;
+        case "delete-design": {
+          if (!knownDesign(action.path)) break;
+          const { response } = await dialog.showMessageBox(editor!, {
+            type: "warning",
+            message: `Move "${path.basename(action.path)}" to the trash?`,
+            buttons: ["Move to Trash", "Cancel"],
+            defaultId: 1,
+            cancelId: 1,
+          });
+          if (response === 0) await workspace.deleteDesign(action.path);
+          break;
+        }
+      }
+    } catch (error) {
+      dialog.showErrorBox("Canvas", error instanceof Error ? error.message : String(error));
+    }
+  }
 
   async function runCommand(command: UserCommand) {
     try {
@@ -195,7 +253,7 @@ async function boot() {
           store.redo();
           break;
         case "new":
-          await store.newDocument();
+          await workspace.newDesign();
           break;
         case "open": {
           const result = await dialog.showOpenDialog(editor!, {
@@ -203,7 +261,7 @@ async function boot() {
             filters: [{ name: "Canvas designs", extensions: ["json"] }],
             properties: ["openFile"],
           });
-          if (!result.canceled && result.filePaths[0]) await store.open(result.filePaths[0]);
+          if (!result.canceled && result.filePaths[0]) await workspace.openDesign(result.filePaths[0]);
           break;
         }
         case "save":
@@ -233,8 +291,13 @@ async function boot() {
     {
       label: "File",
       submenu: [
-        { label: "New", accelerator: "CmdOrCtrl+N", click: () => void runCommand("new") },
-        { label: "Open…", accelerator: "CmdOrCtrl+O", click: () => void runCommand("open") },
+        { label: "New Design", accelerator: "CmdOrCtrl+N", click: () => void runCommand("new") },
+        { label: "Open Design…", accelerator: "CmdOrCtrl+O", click: () => void runCommand("open") },
+        {
+          label: "Open Project…",
+          accelerator: "CmdOrCtrl+Shift+O",
+          click: () => void runProjectAction({ type: "open-project" }),
+        },
         { label: "Save", accelerator: "CmdOrCtrl+S", click: () => void runCommand("save") },
         { label: "Save As…", accelerator: "CmdOrCtrl+Shift+S", click: () => void runCommand("save-as") },
         { type: "separator" },
@@ -249,11 +312,16 @@ async function boot() {
     {
       label: "Edit",
       submenu: [
-        { label: "Undo", accelerator: "CmdOrCtrl+Z", click: () => void runCommand("undo") },
-        { label: "Redo", accelerator: "CmdOrCtrl+Shift+Z", click: () => void runCommand("redo") },
-        { label: "Redo ", accelerator: "CmdOrCtrl+Y", visible: false, click: () => void runCommand("redo") },
+        // Shortcuts are handled by the renderer so they don't fire while typing in a text field.
+        { label: "Undo", accelerator: "CmdOrCtrl+Z", registerAccelerator: false, click: () => void runCommand("undo") },
+        {
+          label: "Redo",
+          accelerator: "CmdOrCtrl+Shift+Z",
+          registerAccelerator: false,
+          click: () => void runCommand("redo"),
+        },
         { type: "separator" },
-        { label: "Deselect", accelerator: "Escape", click: () => store.setSelection([]) },
+        { label: "Deselect", accelerator: "Escape", registerAccelerator: false, click: () => store.setSelection([]) },
       ],
     },
     {
@@ -264,6 +332,7 @@ async function boot() {
         { label: "Actual Size", accelerator: "CmdOrCtrl+0", click: () => sendView("zoom-reset") },
         { label: "Zoom to Fit", accelerator: "Shift+1", click: () => sendView("zoom-fit") },
         { label: "Zoom to Selection", accelerator: "Shift+2", click: () => sendView("zoom-selection") },
+        { label: "Toggle Sidebar", accelerator: "CmdOrCtrl+\\", click: () => sendView("toggle-sidebar") },
         { type: "separator" },
         { role: "toggleDevTools" },
         { role: "togglefullscreen" },
@@ -286,7 +355,7 @@ async function boot() {
 
   app.on("second-instance", (_event, argv) => {
     const file = argv.slice(1).find((arg) => arg.endsWith(".json") && !arg.startsWith("-"));
-    if (file) void store.open(file);
+    if (file) void workspace.openDesign(path.resolve(file));
     if (editor) {
       if (editor.isMinimized()) editor.restore();
       editor.focus();
@@ -305,6 +374,7 @@ async function boot() {
     event.preventDefault();
     quitting = true;
     stage.destroy();
+    workspace.dispose();
     void store.flush().finally(() => app.quit());
   });
 }
