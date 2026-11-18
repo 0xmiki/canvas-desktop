@@ -429,7 +429,10 @@ export function Editor() {
 
   // ---- render ----------------------------------------------------------------
 
-  const context = useMemo(() => (state ? { doc: state.doc, docDir: state.docDir } : null), [state?.doc, state?.docDir]);
+  const context = useMemo(
+    () => (state ? { doc: state.doc, docDir: state.docDir, glyphs: state.glyphs } : null),
+    [state?.doc, state?.docDir, state?.glyphs],
+  );
   const breadcrumb = useMemo(() => {
     const id = state?.selection.length === 1 ? state.selection[0]! : null;
     if (!state || !id) return null;

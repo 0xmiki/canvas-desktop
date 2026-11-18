@@ -1,7 +1,14 @@
 import { createContext, createElement, useContext, useMemo, type CSSProperties, type ReactNode } from "react";
 import iconNodes from "lucide-static/icon-nodes.json";
 
-import type { DesignDocument, DesignNode, Paint, PathNode } from "../../shared/schema.ts";
+import {
+  LEGACY_ICON_SET,
+  PHOSPHOR_WEIGHTS,
+  type DesignDocument,
+  type DesignNode,
+  type Paint,
+  type PathNode,
+} from "../../shared/schema.ts";
 import { expandInstance, missingComponent } from "../../shared/tree.ts";
 import { assetUrl, nodeStyle, resolveNode, strokeOverlayStyle, type ParentLayout } from "./style.ts";
 
@@ -11,11 +18,14 @@ const ICONS = iconNodes as unknown as Record<string, IconNode>;
 interface RenderContextValue {
   doc: DesignDocument;
   docDir: string | null;
+  /** Phosphor SVG bodies keyed "weight:name", supplied by the main process. */
+  glyphs: Record<string, string>;
 }
 
 export const RenderContext = createContext<RenderContextValue>({
   doc: { format: "canvas/1", variables: {}, children: [] },
   docDir: null,
+  glyphs: {},
 });
 
 export function NodeView({ node: raw, parent }: { node: DesignNode; parent: ParentLayout }) {
@@ -58,7 +68,12 @@ export function NodeView({ node: raw, parent }: { node: DesignNode; parent: Pare
       );
       break;
     case "icon":
-      content = <Icon name={node.icon} strokeWidth={node.strokeWidth} />;
+      content =
+        (node.set ?? LEGACY_ICON_SET) === "phosphor" ? (
+          <PhosphorIcon name={node.icon} weight={node.weight} />
+        ) : (
+          <Icon name={node.icon} strokeWidth={node.strokeWidth} />
+        );
       break;
     case "path":
       content = <PathSvg node={node} />;
@@ -73,6 +88,26 @@ export function NodeView({ node: raw, parent }: { node: DesignNode; parent: Pare
       {content}
       {stroke && <div className="cv-stroke" style={stroke} />}
     </div>
+  );
+}
+
+const PHOSPHOR_WEIGHT_SET = new Set<string>(PHOSPHOR_WEIGHTS);
+
+function PhosphorIcon({ name, weight }: { name: string; weight?: string }) {
+  const { glyphs } = useContext(RenderContext);
+  const body = glyphs[`${weight && PHOSPHOR_WEIGHT_SET.has(weight) ? weight : "regular"}:${name}`];
+  if (body === undefined) {
+    return <div style={{ width: "100%", height: "100%", border: "1px dashed #ef4444", borderRadius: 4 }} title={`Unknown icon "${name}"`} />;
+  }
+  return (
+    <svg
+      viewBox="0 0 256 256"
+      width="100%"
+      height="100%"
+      fill="currentColor"
+      style={{ display: "block" }}
+      dangerouslySetInnerHTML={{ __html: body }}
+    />
   );
 }
 

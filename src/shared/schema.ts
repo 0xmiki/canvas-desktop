@@ -144,13 +144,25 @@ export interface ImageNode extends BaseNode {
   fit?: "cover" | "contain" | "fill";
 }
 
+export const ICON_SETS = ["phosphor", "lucide"] as const;
+export type IconSet = (typeof ICON_SETS)[number];
+export const PHOSPHOR_WEIGHTS = ["thin", "light", "regular", "bold", "fill", "duotone"] as const;
+export type PhosphorWeight = (typeof PHOSPHOR_WEIGHTS)[number];
+/** New icon nodes use Phosphor; nodes saved before `set` existed are Lucide. */
+export const DEFAULT_ICON_SET: IconSet = "phosphor";
+export const LEGACY_ICON_SET: IconSet = "lucide";
+
 export interface IconNode extends BaseNode {
   type: "icon";
-  /** A Lucide icon name, e.g. "search", "arrow-right". Use list_icons to discover names. */
+  /** Icon name in its set, e.g. "magnifying-glass" (Phosphor). Use list_icons to discover names. */
   icon: string;
+  set?: IconSet;
+  /** Phosphor only. Default "regular". */
+  weight?: PhosphorWeight;
   color?: string;
   /** Shorthand for width = height. Default 24. */
   size?: number;
+  /** Lucide only. */
   strokeWidth?: number;
 }
 
@@ -282,7 +294,7 @@ export const NODE_PROPS: Record<NodeType, readonly string[]> = {
   rect: BASE_PROPS,
   ellipse: BASE_PROPS,
   image: [...BASE_PROPS, "src", "fit"],
-  icon: [...BASE_PROPS, "icon", "color", "size", "strokeWidth"],
+  icon: [...BASE_PROPS, "icon", "set", "weight", "color", "size", "strokeWidth"],
   path: [...BASE_PROPS, "d", "viewBox", "fillRule"],
   svg: [...BASE_PROPS, "svg"],
   instance: [...BASE_PROPS, "ref", "overrides"],

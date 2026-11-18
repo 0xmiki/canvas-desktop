@@ -11,6 +11,7 @@ import { NodeView, RenderContext } from "./render/NodeView.tsx";
 interface Job {
   doc: DesignDocument;
   docDir: string | null;
+  glyphs: Record<string, string>;
   roots: DesignNode[];
   transform: string;
 }
@@ -30,7 +31,7 @@ export function Stage() {
     return window.canvasBridge.onRequest(async (request: RendererRequest) => {
       switch (request.type) {
         case "render": {
-          const { doc, docDir, ids, scale, maxSize } = request.payload;
+          const { doc, docDir, glyphs, ids, scale, maxSize } = request.payload;
           const rootIds = new Set<string>();
           const warnings: string[] = [];
           const targets = ids ?? doc.children.map((node) => node.id);
@@ -43,7 +44,7 @@ export function Stage() {
           if (!roots.length) throw new Error(`Nothing to render${ids ? ` (not found: ${ids.join(", ")})` : ""}`);
 
           docRef.current = doc;
-          flushSync(() => setJob({ doc, docDir, roots, transform: "none" }));
+          flushSync(() => setJob({ doc, docDir, glyphs, roots, transform: "none" }));
           const world = worldRef.current!;
           await fontsReady(collectFonts(doc, roots));
           await imagesReady(world);
@@ -105,7 +106,7 @@ export function Stage() {
   if (!job) return null;
   return (
     <div ref={worldRef} className="cv-world cv-stage" style={{ transform: job.transform }}>
-      <RenderContext.Provider value={{ doc: job.doc, docDir: job.docDir }}>
+      <RenderContext.Provider value={{ doc: job.doc, docDir: job.docDir, glyphs: job.glyphs }}>
         {job.roots.map((node) => (
           <NodeView key={node.id} node={node} parent="canvas" />
         ))}

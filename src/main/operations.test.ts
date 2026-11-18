@@ -141,3 +141,36 @@ describe("applyOperations", () => {
     ).toThrow(/Did you mean: search/);
   });
 });
+
+describe("icon sets", () => {
+  const catalogs: Record<string, string[]> = { phosphor: ["magnifying-glass", "house"], lucide: ["search", "house"] };
+  const context = {
+    iconExists: (name: string, set: string) => catalogs[set]!.includes(name),
+    suggestIcons: (name: string, set: string) => catalogs[set]!.filter((n) => n[0] === name[0]),
+  };
+
+  test("new icons default to phosphor and validate against it", () => {
+    const { doc } = applyOperations(emptyDocument(), [
+      { op: "create", node: { type: "icon", id: "i", icon: "magnifying-glass", weight: "bold" } },
+    ], context);
+    expect(doc.children[0]).toMatchObject({ set: "phosphor", weight: "bold" });
+    expect(() =>
+      applyOperations(emptyDocument(), [{ op: "create", node: { type: "icon", icon: "search" } }], context),
+    ).toThrow(/unknown phosphor icon "search".*exists in lucide: add set: "lucide"/);
+  });
+
+  test("legacy icons without a set stay lucide on update", () => {
+    const legacy = { ...emptyDocument(), children: [{ type: "icon" as const, id: "old", icon: "house" }] };
+    expect(() => applyOperations(legacy, [{ op: "update", id: "old", set: { icon: "search" } }], context)).not.toThrow();
+    expect(() =>
+      applyOperations(legacy, [{ op: "update", id: "old", set: { icon: "magnifying-glass" } }], context),
+    ).toThrow(/unknown lucide icon/);
+    // Switching set re-validates the existing name.
+    expect(() =>
+      applyOperations(legacy, [{ op: "update", id: "old", set: { set: "phosphor", icon: "magnifying-glass" } }], context),
+    ).not.toThrow();
+    expect(() => applyOperations(legacy, [{ op: "update", id: "old", set: { weight: "heavy" } }], context)).toThrow(
+      /weight must be one of/,
+    );
+  });
+});

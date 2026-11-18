@@ -61,6 +61,8 @@ export interface AppState {
   project: ProjectRef | null;
   projects: ProjectRef[];
   designs: DesignRef[];
+  /** Phosphor SVG bodies used by the document, keyed "weight:name". */
+  glyphs: Record<string, string>;
 }
 
 export interface Bounds {
@@ -78,6 +80,7 @@ export type RendererRequest =
       payload: {
         doc: DesignDocument;
         docDir: string | null;
+        glyphs: Record<string, string>;
         ids: string[] | null;
         scale: number;
         maxSize: number;

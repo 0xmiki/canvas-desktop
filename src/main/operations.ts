@@ -3,12 +3,17 @@
 // or nothing, so a failed batch never leaves a half-built design behind.
 
 import {
+  DEFAULT_ICON_SET,
+  ICON_SETS,
+  LEGACY_ICON_SET,
   NODE_PROPS,
+  PHOSPHOR_WEIGHTS,
   NODE_TYPES,
   PROP_HINTS,
   type DesignDocument,
   type DesignNode,
   type FrameNode,
+  type IconSet,
   type NodeType,
   type VariableValue,
 } from "../shared/schema.ts";
@@ -47,8 +52,8 @@ export interface OperationResult {
 }
 
 export interface ValidationContext {
-  iconExists?: (name: string) => boolean;
-  suggestIcons?: (name: string) => string[];
+  iconExists?: (name: string, set: IconSet) => boolean;
+  suggestIcons?: (name: string, set: IconSet) => string[];
 }
 
 export class OperationError extends Error {}
@@ -102,6 +107,8 @@ const ENUM_PROPS: Record<string, readonly string[]> = {
   fontStyle: ["normal", "italic"],
   fit: ["cover", "contain", "fill"],
   fillRule: ["nonzero", "evenodd"],
+  set: ICON_SETS,
+  weight: PHOSPHOR_WEIGHTS,
 };
 
 const isVariableRef = (value: unknown) => typeof value === "string" && value.startsWith("$");
@@ -222,6 +229,8 @@ function normalizeProps(
   props: Record<string, unknown>,
   context: ValidationContext,
   where: string,
+  /** The node being updated, so icon names validate against its set. */
+  existing?: Record<string, unknown>,
 ): void {
   // Text and icon glyph color: accept `fill` as the obvious alias.
   if ((type === "text" || type === "icon") && "fill" in props && !("color" in props)) {
@@ -239,12 +248,18 @@ function normalizeProps(
     const error = checkValue(key, value);
     if (error) throw new OperationError(`${where}: ${error}`);
   }
-  if (type === "icon" && typeof props.icon === "string" && context.iconExists) {
-    if (!context.iconExists(props.icon)) {
-      const suggestions = context.suggestIcons?.(props.icon) ?? [];
+  if (type === "icon" && context.iconExists) {
+    const name = (props.icon ?? existing?.icon) as unknown;
+    const set = ((props.set ?? existing?.set) as IconSet | undefined) ?? LEGACY_ICON_SET;
+    const changed = "icon" in props || "set" in props;
+    if (changed && typeof name === "string" && !context.iconExists(name, set)) {
+      const suggestions = context.suggestIcons?.(name, set) ?? [];
+      const other: IconSet = set === "phosphor" ? "lucide" : "phosphor";
+      const inOther = context.iconExists(name, other) ? ` "${name}" exists in ${other}: add set: "${other}" to use it.` : "";
       throw new OperationError(
-        `${where}: unknown icon "${props.icon}".` +
-          (suggestions.length ? ` Did you mean: ${suggestions.join(", ")}?` : " Use list_icons to search."),
+        `${where}: unknown ${set} icon "${name}".` +
+          (suggestions.length ? ` Did you mean: ${suggestions.join(", ")}?` : " Use list_icons to search.") +
+          inOther,
       );
     }
   }
@@ -314,6 +329,7 @@ function buildNode(
   if (rawChildren !== undefined && !Array.isArray(rawChildren))
     throw new OperationError(`${label}: children must be an array`);
 
+  if (type === "icon" && props.set === undefined) props.set = DEFAULT_ICON_SET;
   normalizeProps(type, props, context, label);
   for (const [key, value] of Object.entries(props)) if (value === null) delete props[key];
 
@@ -449,7 +465,13 @@ function applyUpdate(
     const target = expanded && findExpanded(expanded, id);
     if (!target) throw new OperationError(`${where}: "${id}" not found inside instance "${instanceId}"`);
     const patch = { ...set };
-    normalizeProps(target.type, patch, context, `${where} (${target.type} override)`);
+    normalizeProps(
+      target.type,
+      patch,
+      context,
+      `${where} (${target.type} override)`,
+      target as unknown as Record<string, unknown>,
+    );
     const key = rest.join("/");
     const overrides = { ...location.node.overrides };
     const merged: Record<string, unknown> = { ...overrides[key] };
@@ -466,7 +488,7 @@ function applyUpdate(
   const location = mustLocate(doc, id, where);
   const node = location.node as unknown as Record<string, unknown>;
   const patch = { ...set };
-  normalizeProps(location.node.type, patch, context, `${where} (${location.node.type} "${id}")`);
+  normalizeProps(location.node.type, patch, context, `${where} (${location.node.type} "${id}")`, node);
   for (const [key, value] of Object.entries(patch)) {
     if (value === null || value === undefined) delete node[key];
     else node[key] = value;
@@ -536,7 +558,7 @@ export function applyOperations(
         const copy = cloneWithNewIds(location.node, ids);
         if (operation.set) {
           const patch = { ...operation.set };
-          normalizeProps(copy.type, patch, context, where);
+          normalizeProps(copy.type, patch, context, where, copy as unknown as Record<string, unknown>);
           Object.assign(copy, patch);
         }
         if (operation.parent !== undefined) {

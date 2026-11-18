@@ -50,7 +50,7 @@ The status bar shows the endpoint; click it to copy that command. Set `CANVAS_MC
 | `read_nodes` / `find_nodes` | Inspect node JSON with rendered bounds; search by name, text, type |
 | `screenshot` | Exact offscreen render of nodes (or `editor: true` for the user's view) |
 | `export` | PNG (transparent, any scale) or standalone HTML/CSS |
-| `list_icons` | Search the Lucide icon set |
+| `list_icons` | Search Phosphor (default; 1500+ icons, 6 weights) or Lucide |
 | `focus` | Select nodes and zoom the user's view to them |
 | `history` | Undo/redo/list |
 | `list_projects` / `open_project` | Projects: folders of designs, optionally inside a code repo |
@@ -58,7 +58,7 @@ The status bar shows the endpoint; click it to copy that command. Set `CANVAS_MC
 
 ## Document model
 
-Designs are JSON (`*.canvas.json`), CSS-shaped so agents already know the vocabulary: frames with `layout: row | column | grid`, `gap`, `padding`, `justify`, `align`; sizes as px, `"fill"` or `"hug"`; `fill` paints (colors, gradients, images), `stroke`, `radius`, `shadow`; `text`, `icon` (Lucide), `image`, `path`, `svg`; components (`component: true`) and `instance` nodes with per-descendant `overrides`; `$variables` as design tokens. The canonical reference is `src/main/mcp/guide.ts`, the same text agents get from `get_guide`.
+Designs are JSON (`*.canvas.json`), CSS-shaped so agents already know the vocabulary: frames with `layout: row | column | grid`, `gap`, `padding`, `justify`, `align`; sizes as px, `"fill"` or `"hug"`; `fill` paints (colors, gradients, images), `stroke`, `radius`, `shadow`; `text`, `icon` (Phosphor with thin/light/regular/bold/fill/duotone weights, or Lucide), `image`, `path`, `svg`; components (`component: true`) and `instance` nodes with per-descendant `overrides`; `$variables` as design tokens. The canonical reference is `src/main/mcp/guide.ts`, the same text agents get from `get_guide`.
 
 Documents with a path autosave after every edit. Untitled documents are kept in a recovery file in the app's user data folder until saved.
 

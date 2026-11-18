@@ -30,7 +30,7 @@ import {
 import { DOCUMENT_EXTENSION } from "../shared/schema.ts";
 import { DocumentStore } from "./documentStore.ts";
 import { Workspace } from "./workspace.ts";
-import { iconExists, suggestIcons } from "./icons.ts";
+import { iconExists, phosphorGlyphsFor, suggestIcons } from "./icons.ts";
 import { DEFAULT_MCP_PORT, startMcpServer } from "./mcp/server.ts";
 import type { CanvasHost, MeasureResult } from "./mcp/tools.ts";
 import { requestRenderer } from "./rendererRpc.ts";
@@ -94,6 +94,13 @@ async function boot() {
   const fileArg = process.argv.slice(1).find((arg) => arg.endsWith(".json") && !arg.startsWith("-"));
   await workspace.restore(fileArg);
 
+  // Glyphs only change with the document; recompute per document version.
+  let glyphCache: { doc: unknown; glyphs: Record<string, string> } = { doc: null, glyphs: {} };
+  const glyphsFor = (doc: typeof store.doc) => {
+    if (glyphCache.doc !== doc) glyphCache = { doc, glyphs: phosphorGlyphsFor(doc) };
+    return glyphCache.glyphs;
+  };
+
   let editor: BrowserWindow | null = null;
   let rendererReady = false;
 
@@ -109,6 +116,7 @@ async function boot() {
     project: workspace.project,
     projects: workspace.projects,
     designs: workspace.designs,
+    glyphs: glyphsFor(store.doc),
   });
 
   let broadcastQueued = false;

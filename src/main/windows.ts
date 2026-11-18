@@ -4,6 +4,7 @@ import { BrowserWindow, nativeImage, shell, type WebContents } from "electron";
 
 import type { DesignDocument } from "../shared/schema.ts";
 import type { RenderResult } from "../shared/ipc.ts";
+import { phosphorGlyphsFor } from "./icons.ts";
 import { requestRenderer } from "./rendererRpc.ts";
 
 const devServerUrl = process.env.VITE_DEV_SERVER_URL;
@@ -118,7 +119,11 @@ export class Stage {
         contents,
         {
           type: "render",
-          payload: { ...options, maxSize: Math.min(options.maxSize, MAX_STAGE_SIZE) },
+          payload: {
+            ...options,
+            glyphs: phosphorGlyphsFor(options.doc),
+            maxSize: Math.min(options.maxSize, MAX_STAGE_SIZE),
+          },
         },
         30_000,
       );
@@ -164,7 +169,13 @@ export class Stage {
       const window = await this.ensure();
       const result = await requestRenderer<RenderResult>(window.webContents, {
         type: "render",
-        payload: { ...options, scale: 1, maxSize: MAX_STAGE_SIZE, background: null },
+        payload: {
+          ...options,
+          glyphs: phosphorGlyphsFor(options.doc),
+          scale: 1,
+          maxSize: MAX_STAGE_SIZE,
+          background: null,
+        },
       });
       const html = await requestRenderer<string>(window.webContents, { type: "html", payload: null });
       return { html, result };

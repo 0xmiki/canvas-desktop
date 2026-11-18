@@ -7,7 +7,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
 import type { Bounds } from "../../shared/ipc.ts";
-import type { DesignDocument, DesignNode } from "../../shared/schema.ts";
+import { DEFAULT_ICON_SET, ICON_SETS, type DesignDocument, type DesignNode } from "../../shared/schema.ts";
 import { expandInstance, locate, walk } from "../../shared/tree.ts";
 import type { DocumentStore } from "../documentStore.ts";
 import type { Workspace } from "../workspace.ts";
@@ -523,16 +523,18 @@ export function registerTools(server: McpServer, host: CanvasHost) {
     "list_icons",
     {
       title: "List icons",
-      description: "Search the Lucide icon set by keyword. Returns icon names usable as icon nodes' `icon`.",
+      description:
+        "Search icons by keyword. Phosphor (default, 1500+ icons in 6 weights) or Lucide. Returns names for icon nodes' `icon`; pass the same `set` on the node.",
       inputSchema: {
         query: z.string().describe("Keywords, e.g. 'settings gear' or 'arrow'"),
+        set: z.enum(ICON_SETS).optional().describe('Icon set (default "phosphor")'),
         limit: z.number().int().min(1).max(200).optional(),
       },
       annotations: { readOnlyHint: true },
     },
-    async ({ query, limit = 40 }) => {
-      const names = searchIcons(query, limit);
-      return text(names.length ? names.join(", ") : "No icons matched. Try a broader word.");
+    async ({ query, set = DEFAULT_ICON_SET, limit = 40 }) => {
+      const names = searchIcons(query, set, limit);
+      return text(names.length ? `${set}: ${names.join(", ")}` : "No icons matched. Try a broader word.");
     },
   );
 

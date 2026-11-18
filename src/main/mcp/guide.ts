@@ -20,7 +20,10 @@ them in the same batch; ids must be unique and use letters, digits, "_" or "-". 
 - text — \`text\` string. Use "\\n" for line breaks.
 - rect, ellipse — shapes.
 - image — \`src\`: https URL, data: URI, absolute path, or path relative to the document file. \`fit\`: cover|contain|fill.
-- icon — Lucide icon: \`icon\` name (find names with list_icons), \`size\` (default 24), \`color\`, \`strokeWidth\`.
+- icon — \`icon\` name, \`size\` (default 24), \`color\`. Default set is Phosphor (1500+ icons, e.g. "magnifying-glass",
+  "house", "gear-six", "arrow-right") with \`weight\`: thin | light | regular (default) | bold | fill | duotone.
+  Use one weight consistently (regular or bold for UI, fill for active states, duotone for illustrations).
+  \`set: "lucide"\` switches to Lucide (stroke icons; \`strokeWidth\` applies). Find names with list_icons.
 - path — \`d\` (SVG path data), optional \`viewBox\` (defaults to "0 0 width height"), \`fillRule\`. Fill/stroke apply.
 - svg — \`svg\` raw markup, scaled to the node box. Good for logos and illustrations.
 - instance — \`ref\`: id of a frame with \`component: true\`. Renders the component; own props
