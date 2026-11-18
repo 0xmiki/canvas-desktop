@@ -2,6 +2,9 @@ import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";
 
+import { icons as phosphorIcons } from "@phosphor-icons/core";
+import lucideTags from "lucide-static/tags.json";
+
 import {
   LEGACY_ICON_SET,
   PHOSPHOR_WEIGHTS,
@@ -21,15 +24,15 @@ const catalogs = new Map<IconSet, Catalog>();
 function catalog(set: IconSet): Catalog {
   let entries = catalogs.get(set);
   if (entries) return entries;
+  // Both catalogs are bundled into the main process at build time.
   if (set === "lucide") {
-    const tags = require("lucide-static/tags.json") as Record<string, string[]>;
-    entries = new Map(Object.entries(tags));
+    entries = new Map(Object.entries(lucideTags as Record<string, string[]>));
   } else {
-    const { icons } = require("@phosphor-icons/core") as {
-      icons: { name: string; tags: string[]; categories: string[] }[];
-    };
     entries = new Map(
-      icons.map((icon) => [icon.name, [...icon.tags.filter((tag) => tag !== "*new*"), ...icon.categories]]),
+      phosphorIcons.map((icon) => [
+        icon.name,
+        [...icon.tags.filter((tag) => tag !== "*new*"), ...icon.categories.map(String)],
+      ]),
     );
   }
   catalogs.set(set, entries);
@@ -102,8 +105,7 @@ function phosphorGlyph(name: string, weight: PhosphorWeight): string | null {
   // exception would surface as a main-process crash dialog.
   try {
     if (iconExists(name, "phosphor")) {
-      // The package's "exports" hide package.json; resolve its main entry (dist/) instead.
-      phosphorAssets ??= path.join(path.dirname(require.resolve("@phosphor-icons/core")), "..", "assets");
+      phosphorAssets ??= phosphorAssetsDir();
       const file = path.join(phosphorAssets, weight, `${name}${weight === "regular" ? "" : `-${weight}`}.svg`);
       const svg = fs.readFileSync(file, "utf8");
       body = svg.slice(svg.indexOf(">") + 1, svg.lastIndexOf("</svg>"));
@@ -114,6 +116,17 @@ function phosphorGlyph(name: string, weight: PhosphorWeight): string | null {
   }
   glyphs.set(key, body);
   return body;
+}
+
+/**
+ * Phosphor's SVG files. Packaged builds ship them inside the app archive next
+ * to dist-electron/; in development they come straight from node_modules.
+ */
+function phosphorAssetsDir(): string {
+  const packaged = path.join(__dirname, "..", "phosphor");
+  if (fs.existsSync(packaged)) return packaged;
+  // The package's "exports" hide package.json; resolve its main entry (dist/) instead.
+  return path.join(path.dirname(require.resolve("@phosphor-icons/core")), "..", "assets");
 }
 
 export function glyphKey(name: string, weight: string | undefined): string {

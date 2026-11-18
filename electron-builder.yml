@@ -1,0 +1,49 @@
+# Packaging for GitHub releases. Main and preload bundle every runtime
+# dependency (see tsdown.config.ts), so the app ships without node_modules.
+# Phosphor's SVG files go inside the asar next to the bundles.
+appId: dev.canvas.desktop
+productName: Canvas
+copyright: Copyright © 2026 0xmiki
+artifactName: Canvas-${version}-${os}-${arch}.${ext}
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - dist/**
+  - dist-electron/**
+  - "!dist-electron/**/*.map"
+  - package.json
+  - from: node_modules/@phosphor-icons/core/assets
+    to: phosphor
+
+asar: true
+npmRebuild: false
+nodeGypRebuild: false
+publish: null
+
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Graphics
+  synopsis: AI-first design canvas driven by agents over MCP
+  maintainer: 0xmiki <0xmiki@users.noreply.github.com>
+
+mac:
+  target:
+    - dmg
+    - zip
+  category: public.app-category.graphics-design
+  # Unsigned: there is no Apple Developer ID here. See the README for opening it.
+  identity: null
+
+win:
+  target:
+    - nsis
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true

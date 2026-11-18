@@ -1,0 +1,141 @@
+{
+  "format": "canvas/1",
+  "variables": {},
+  "children": [
+    {
+      "type": "frame",
+      "id": "icon",
+      "name": "App icon",
+      "x": 0,
+      "y": 0,
+      "width": 1024,
+      "height": 1024,
+      "children": [
+        {
+          "type": "frame",
+          "id": "tile",
+          "x": 100,
+          "y": 100,
+          "width": 824,
+          "height": 824,
+          "radius": 186,
+          "clip": true,
+          "fill": [
+            {
+              "type": "radial",
+              "stops": [
+                {
+                  "color": "rgba(255,255,255,0.28)",
+                  "position": 0
+                },
+                {
+                  "color": "rgba(255,255,255,0)",
+                  "position": 0.6
+                }
+              ]
+            },
+            {
+              "type": "linear",
+              "angle": 145,
+              "stops": [
+                {
+                  "color": "#5b5bf6",
+                  "position": 0
+                },
+                {
+                  "color": "#8b5cf6",
+                  "position": 0.55
+                },
+                {
+                  "color": "#c026d3",
+                  "position": 1
+                }
+              ]
+            }
+          ],
+          "shadow": [
+            {
+              "y": 24,
+              "blur": 48,
+              "color": "rgba(76,29,149,0.35)"
+            }
+          ],
+          "children": [
+            {
+              "type": "frame",
+              "id": "artboard",
+              "x": 182,
+              "y": 232,
+              "width": 460,
+              "height": 360,
+              "radius": 36,
+              "fill": "rgba(255,255,255,0.14)",
+              "stroke": {
+                "color": "#ffffff",
+                "width": 26,
+                "align": "inside"
+              },
+              "children": []
+            },
+            {
+              "type": "rect",
+              "x": 150,
+              "y": 200,
+              "width": 64,
+              "height": 64,
+              "radius": 14,
+              "fill": "#ffffff",
+              "id": "g5r0s"
+            },
+            {
+              "type": "rect",
+              "x": 610,
+              "y": 200,
+              "width": 64,
+              "height": 64,
+              "radius": 14,
+              "fill": "#ffffff",
+              "id": "tlg5t"
+            },
+            {
+              "type": "rect",
+              "x": 150,
+              "y": 560,
+              "width": 64,
+              "height": 64,
+              "radius": 14,
+              "fill": "#ffffff",
+              "id": "t7ezv"
+            },
+            {
+              "type": "rect",
+              "x": 610,
+              "y": 560,
+              "width": 64,
+              "height": 64,
+              "radius": 14,
+              "fill": "#ffffff",
+              "id": "er5ff"
+            },
+            {
+              "type": "icon",
+              "icon": "sparkle",
+              "weight": "fill",
+              "x": 540,
+              "y": 430,
+              "size": 220,
+              "color": "#ffffff",
+              "shadow": {
+                "y": 10,
+                "blur": 24,
+                "color": "rgba(76,29,149,0.45)"
+              },
+              "set": "phosphor",
+              "id": "l239r"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

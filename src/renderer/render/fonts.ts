@@ -85,6 +85,10 @@ export async function fontsReady(uses: FontUse[], timeoutMs = 4000) {
       ),
     ),
   );
-  await Promise.race([work, new Promise((resolve) => setTimeout(resolve, timeoutMs))]);
-  await document.fonts.ready;
+  // The timeout bounds everything, including fonts.ready: a slow or offline
+  // network must degrade to fallback fonts, never hang a render.
+  await Promise.race([
+    work.then(() => document.fonts.ready),
+    new Promise((resolve) => setTimeout(resolve, timeoutMs)),
+  ]);
 }

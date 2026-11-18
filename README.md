@@ -19,7 +19,29 @@ The "Wheel" button in the status bar switches between auto, always-zoom and alwa
 
 A project is a folder of designs (`*.canvas.json`). It can be a standalone folder (new ones go in `~/Documents/Canvas`) or a `design/` folder inside a code repo, so the agent working on that repo keeps designs next to the code. The sidebar (Ctrl+\) switches projects and creates, opens, renames (double-click) and trashes designs. Files that appear in the folder from elsewhere show up live. Opening a file outside any project adds its folder as a project.
 
-## Run
+## Download
+
+Get the latest build from [Releases](https://github.com/0xmiki/canvas-desktop/releases/latest):
+
+| OS | File |
+| --- | --- |
+| Linux | `Canvas-<version>-linux-x86_64.AppImage` (any distro; on NixOS run it with `appimage-run`) or the `.deb` |
+| Windows | `Canvas-<version>-win-x64.exe` installer |
+| macOS | `Canvas-<version>-mac-arm64.dmg` (Apple Silicon) or `-x64.dmg` (Intel) |
+
+The Windows and macOS builds are not code-signed. On Windows, choose *More info → Run anyway* in SmartScreen. On macOS, after dragging Canvas to Applications, run `xattr -cr /Applications/Canvas.app` once (or right-click → Open).
+
+## Releasing
+
+Bump `version` in `package.json`, commit, then tag and push:
+
+```sh
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+The [Release workflow](.github/workflows/release.yml) builds Linux (AppImage, deb), Windows (NSIS) and macOS (dmg, zip; arm64 and x64) and publishes them as a GitHub release. `bun run dist` builds packages for the current OS locally into `release/`.
+
+## Run from source
 
 ```sh
 bun install
