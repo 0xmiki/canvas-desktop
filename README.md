@@ -37,7 +37,7 @@ The app serves MCP (streamable HTTP) on `http://127.0.0.1:4590/mcp` while it's o
 claude mcp add --transport http canvas http://127.0.0.1:4590/mcp
 ```
 
-The status bar shows the endpoint; click it to copy that command. Set `CANVAS_MCP_PORT` to change the port.
+Claude Code is shown here, but any MCP client works: click the MCP status in the app (or File → Connect an Agent…) for ready-made setup for Codex, Gemini CLI, Cursor, VS Code, Windsurf, OpenCode, and a stdio bridge for anything else. Set `CANVAS_MCP_PORT` to change the port.
 
 ## Tools
 

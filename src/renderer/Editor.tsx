@@ -5,6 +5,7 @@ import { locate } from "../shared/tree.ts";
 import { collectFonts, fontsReady, linkFonts } from "./render/fonts.ts";
 import { boundsOf, elementFor, measureAll } from "./render/measure.ts";
 import { NodeView, RenderContext } from "./render/NodeView.tsx";
+import { ConnectAgents } from "./ConnectAgents.tsx";
 import { Sidebar } from "./Sidebar.tsx";
 import { fitViewport, isMouseWheel, useViewport, zoomAround, type WheelMode } from "./viewport.ts";
 
@@ -63,7 +64,8 @@ export function Editor() {
   const [overlay, setOverlay] = useState<Overlay>({ selection: [], hover: null, labels: [], flash: [] });
   const [flashIds, setFlashIds] = useState<string[]>([]);
   const [toast, setToast] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [connectOpen, setConnectOpen] = useState(false);
+  const connectRef = useRef<HTMLSpanElement>(null);
   const [wheelMode, setWheelMode] = useState<WheelMode>(() => loadSetting("canvas.wheelMode", "auto", WHEEL_MODES));
   const [sidebarOpen, setSidebarOpen] = useState(() => loadSetting("canvas.sidebar", "open", ["open", "closed"]) === "open");
   const [panning, setPanning] = useState(false);
@@ -198,6 +200,8 @@ export function Editor() {
           const selection = stateRef.current?.selection ?? [];
           return fitTo(selection.length ? selection : null, 4);
         }
+        case "connect-agent":
+          return setConnectOpen(true);
         case "toggle-sidebar":
           return setSidebarOpen((open) => !open);
       }
@@ -206,6 +210,23 @@ export function Editor() {
   );
 
   useEffect(() => window.canvasBridge.onViewCommand(runViewCommand), [runViewCommand]);
+
+  // Close the connect popover on outside click or Escape.
+  useEffect(() => {
+    if (!connectOpen) return;
+    const onPointer = (event: PointerEvent) => {
+      if (!connectRef.current?.contains(event.target as Node)) setConnectOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setConnectOpen(false);
+    };
+    window.addEventListener("pointerdown", onPointer);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerdown", onPointer);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [connectOpen]);
 
   // ---- agent activity feedback -----------------------------------------------
 
@@ -449,13 +470,6 @@ export function Editor() {
   if (!state || !context) return <div className="cv-loading" />;
 
   const fileName = state.filePath ? state.filePath.split(/[\\/]/).pop()!.replace(/\.canvas\.json$/, "") : "Untitled";
-  const setupCommand = `claude mcp add --transport http canvas ${state.mcp.url}`;
-  const copySetup = () => {
-    void navigator.clipboard.writeText(setupCommand).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1400);
-    });
-  };
   const stop = (event: React.SyntheticEvent) => event.stopPropagation();
 
   return (
@@ -524,10 +538,7 @@ export function Editor() {
             <div className="cv-empty">
               <h1>Ask your agent to design something</h1>
               <p>Canvas is driven over MCP. Connect your agent once:</p>
-              <button className="cv-command" onClick={copySetup} onPointerDown={stop} onPointerUp={stop}>
-                <code>{setupCommand}</code>
-                <span>{copied ? "Copied" : "Copy"}</span>
-              </button>
+              <ConnectAgents url={state.mcp.url} />
               <p className="cv-hint">Then try: “Design a landing page for a coffee subscription on the canvas.”</p>
             </div>
           )}
@@ -589,14 +600,23 @@ export function Editor() {
             <FitIcon />
           </button>
         </span>
-        <button
-          className={`cv-mcp ${state.mcp.listening ? "is-on" : "is-off"}`}
-          title={state.mcp.error ?? `Click to copy: ${setupCommand}`}
-          onClick={copySetup}
-        >
-          <span className="cv-dot" />
-          {state.mcp.listening ? (copied ? "Copied setup command" : `MCP ${state.mcp.url.replace("http://", "")}`) : "MCP offline"}
-        </button>
+        <span className="cv-mcp-wrap" ref={connectRef}>
+          <button
+            className={`cv-mcp ${state.mcp.listening ? "is-on" : "is-off"}`}
+            title={state.mcp.error ?? "Connect an agent"}
+            onClick={() => setConnectOpen((open) => !open)}
+          >
+            <span className="cv-dot" />
+            {state.mcp.listening ? `MCP ${state.mcp.url.replace("http://", "")}` : "MCP offline"}
+          </button>
+          {connectOpen && (
+            <div className="cv-popover">
+              <div className="cv-popover-title">Connect an agent</div>
+              {state.mcp.error && <p className="cv-connect-error">{state.mcp.error}</p>}
+              <ConnectAgents url={state.mcp.url} />
+            </div>
+          )}
+        </span>
       </footer>
     </div>
   );

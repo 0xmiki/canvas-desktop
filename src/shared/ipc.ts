@@ -107,7 +107,8 @@ export type ViewCommand =
   | "zoom-reset"
   | "zoom-fit"
   | "zoom-selection"
-  | "toggle-sidebar";
+  | "toggle-sidebar"
+  | "connect-agent";
 
 export interface CanvasBridge {
   /** "editor" for the main window, "stage" for the offscreen rasterizer. */

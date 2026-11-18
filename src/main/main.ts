@@ -4,7 +4,6 @@ import { pathToFileURL } from "node:url";
 import {
   app,
   BrowserWindow,
-  clipboard,
   dialog,
   ipcMain,
   Menu,
@@ -310,8 +309,8 @@ async function boot() {
         { label: "Save As…", accelerator: "CmdOrCtrl+Shift+S", click: () => void runCommand("save-as") },
         { type: "separator" },
         {
-          label: "Copy MCP Setup Command",
-          click: () => clipboard.writeText(`claude mcp add --transport http canvas ${mcp.url}`),
+          label: "Connect an Agent…",
+          click: () => sendView("connect-agent"),
         },
         { type: "separator" },
         isMac ? { role: "close" } : { role: "quit" },
